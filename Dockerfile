@@ -5,7 +5,7 @@
 #   stage 2 "runtime": copies ONLY that virtualenv + our code into a clean image
 # Result: a smaller image with no pip cache or build leftovers, running as a non-root user.
 #
-# The model file is NOT trained here: run `make train` first (CI does the same in step 7).
+# The model file is NOT trained here: run `make train` first (CI trains it before building).
 # Python matches the version the model is trained with locally (pickles are version-sensitive).
 
 ARG PYTHON_IMAGE=python:3.13.18-slim
@@ -52,7 +52,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
 
-# WEB_CONCURRENCY worker processes (step 8: 2 workers cut /predict p95 from 12 to 8 ms
+# WEB_CONCURRENCY worker processes (load testing: 2 workers cut /predict p95 from 12 to 8 ms
 # under load, because Python's GIL lets one process do only one CPU task at a time).
 # The metrics dir is wiped on start so counters from a previous run don't leak in.
 # `exec` makes uvicorn PID 1, so it receives Docker's stop signal and shuts down cleanly.

@@ -206,7 +206,6 @@ grafana/        datasource + dashboard provisioning (as code)
 prometheus/     scrape config
 .github/        CI/CD workflow
 Dockerfile, docker-compose.yml, Makefile
-LEARNING_GUIDE.md   step-by-step walkthrough of how and why each piece was built
 ```
 
 ## Roadmap

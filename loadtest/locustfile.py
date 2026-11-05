@@ -7,7 +7,7 @@ when LOADTEST_LLM=1, because they need Ollama.
 Interactive (web UI at http://localhost:8089):
     locust -f loadtest/locustfile.py --host http://localhost:8000
 
-Headless, the way step 8's numbers were measured:
+Headless, the way the README's numbers were measured:
     locust -f loadtest/locustfile.py --host http://localhost:8000 \
         --headless -u 20 -r 20 -t 60s --only-summary --csv loadtest/results/<name>
 

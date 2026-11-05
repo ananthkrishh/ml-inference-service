@@ -9,7 +9,7 @@ Metrics (all scraped from GET /metrics):
   llm_tokens_total                counter    {kind}                   prompt / completion tokens
   inference_errors_total          counter    {model, reason}          failed inferences by cause
 
-Several uvicorn workers (step 8): each worker is a separate process with its own
+Several uvicorn workers: each worker is a separate process with its own
 counters. When PROMETHEUS_MULTIPROC_DIR is set (the Docker image does this), every worker
 writes its numbers to files in that directory and /metrics adds them all up. Without it
 (local dev, tests) the normal single-process registry is used.

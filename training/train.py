@@ -1,4 +1,4 @@
-"""Step 1: train the customer-churn classifier and save a versioned model bundle.
+"""Train the customer-churn classifier and save a versioned model bundle.
 
 Usage:
     python -m training.train                       # download data if needed, train, save
@@ -79,8 +79,8 @@ FEATURE_COLUMNS = NUMERIC_FEATURES + CATEGORICAL_FEATURES
 
 # The pipeline selects columns by POSITION in FEATURE_COLUMNS and is fed a plain numpy
 # object array, not a pandas DataFrame. Same preprocessing, same predictions, but a
-# one-row prediction is ~2.5x faster (step 8): pandas/ColumnTransformer name handling
-# was most of the per-request cost. Recorded in metadata["input_format"].
+# one-row prediction is ~2.5x faster (see README, Performance): pandas/ColumnTransformer
+# name handling was most of the per-request cost. Recorded in metadata["input_format"].
 INPUT_FORMAT = "array"
 NUMERIC_IDX = [FEATURE_COLUMNS.index(c) for c in NUMERIC_FEATURES]
 CATEGORICAL_IDX = [FEATURE_COLUMNS.index(c) for c in CATEGORICAL_FEATURES]
@@ -201,7 +201,7 @@ def evaluate(pipeline: Pipeline, X: np.ndarray, y: pd.Series) -> dict[str, float
 def benchmark_single_row(pipeline: Pipeline, X: np.ndarray, n: int = 300) -> dict[str, float]:
     """Latency of one-row predictions — the shape the API will actually see.
 
-    Gives you a baseline to compare against the HTTP latency in step 4.
+    Gives a baseline to compare against the end-to-end HTTP latency.
     """
     rows = [X[i % len(X) : i % len(X) + 1] for i in range(n)]
     pipeline.predict_proba(rows[0])  # warm-up

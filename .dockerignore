@@ -2,7 +2,6 @@
 # build context makes builds faster and avoids leaking local files into the image.
 .git
 .github
-.claude
 .venv
 venv
 .env

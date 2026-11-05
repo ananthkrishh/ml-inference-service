@@ -109,6 +109,6 @@ def custom_openapi() -> dict:
 
 app.openapi = custom_openapi
 
-# Step 4: time every request, and expose the numbers for Prometheus to scrape.
+# Time every request, and expose the numbers for Prometheus to scrape.
 app.add_middleware(PrometheusMiddleware)
 app.add_api_route("/metrics", metrics_endpoint, methods=["GET"], tags=["monitoring"])

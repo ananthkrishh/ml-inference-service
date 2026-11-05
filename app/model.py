@@ -41,7 +41,7 @@ class ChurnModel:
         columns = self.metadata["feature_columns"]
         values = features.model_dump()
         if self.metadata.get("input_format") == "array":
-            # Step 8: a plain object array is ~2.5x faster than a one-row DataFrame.
+            # A plain object array is ~2.5x faster than a one-row DataFrame.
             # Missing optional numerics stay None; the pipeline's imputer fills them.
             row = np.array([[values[c] for c in columns]], dtype=object)
         else:  # older model bundles were trained on DataFrames
