@@ -1,0 +1,13 @@
+# Runtime dependencies for the API container.
+# scikit-learn is pinned exactly: a joblib model must be loaded with the same
+# version it was trained with, or unpickling can fail or behave differently.
+fastapi==0.162.0
+uvicorn[standard]==0.54.0
+pydantic==2.13.5
+pydantic-settings==2.16.2
+scikit-learn==1.9.1
+pandas==3.0.5
+numpy==2.5.3
+joblib==1.6.0
+httpx==0.28.1
+prometheus-client==0.26.0
