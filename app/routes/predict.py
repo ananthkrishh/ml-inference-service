@@ -6,6 +6,7 @@ from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
+from app.metrics import INFERENCE_ERRORS, MODEL_INFERENCE
 from app.schemas import PredictionResponse
 
 router = APIRouter(tags=["ml"])
@@ -17,6 +18,7 @@ router = APIRouter(tags=["ml"])
 def predict(request: Request, payload: Annotated[dict[str, Any], Body()]) -> PredictionResponse:
     model = request.app.state.model
     if model is None:
+        INFERENCE_ERRORS.labels(model="sklearn", reason="model_not_loaded").inc()
         raise HTTPException(status_code=503, detail="Model not loaded")
 
     # Validate against the schema built from the loaded model's metadata.
@@ -27,7 +29,9 @@ def predict(request: Request, payload: Annotated[dict[str, Any], Body()]) -> Pre
         errors = [{**e, "loc": ("body", *e["loc"])} for e in exc.errors(include_url=False)]
         raise RequestValidationError(errors) from exc
 
-    probability = model.predict_proba_one(features)
+    # Time ONLY the model call, so we can compare it with the whole-request latency.
+    with MODEL_INFERENCE.labels(model="sklearn").time():
+        probability = model.predict_proba_one(features)
     return PredictionResponse(
         churn_probability=round(probability, 4),
         churn=probability >= model.threshold,

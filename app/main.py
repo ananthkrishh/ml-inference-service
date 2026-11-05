@@ -13,6 +13,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.config import get_settings
+from app.metrics import PrometheusMiddleware, metrics_endpoint
 from app.model import load_model
 from app.ollama_client import OllamaClient
 from app.routes import generate, health, predict
@@ -108,4 +109,6 @@ def custom_openapi() -> dict:
 
 app.openapi = custom_openapi
 
-# TODO (step 4): add the Prometheus latency middleware and mount /metrics.
+# Step 4: time every request, and expose the numbers for Prometheus to scrape.
+app.add_middleware(PrometheusMiddleware)
+app.add_api_route("/metrics", metrics_endpoint, methods=["GET"], tags=["monitoring"])
