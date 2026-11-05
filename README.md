@@ -1,5 +1,7 @@
 # ML Inference Service
 
+[![CI](https://github.com/ananthkrishh/ml-inference-service/actions/workflows/ci.yml/badge.svg)](https://github.com/ananthkrishh/ml-inference-service/actions/workflows/ci.yml)
+
 REST inference API serving a scikit-learn customer-churn model and a local Llama 3 model via Ollama.
 Built and tested in GitHub Actions; Prometheus latency metrics track and guide performance work.
 
@@ -35,6 +37,12 @@ make down
 
 API http://localhost:8000/docs · Prometheus http://localhost:9090 · Grafana http://localhost:3000
 
+Or just the published API image (built and smoke-tested by CI on every push to `main`):
+
+```bash
+docker run -p 8000:8000 ghcr.io/ananthkrishh/ml-inference-service:latest
+```
+
 ## Model (step 1)
 
 - **Data:** IBM Telco Customer Churn — 7,043 customers, 19 features, ~27% churn.
@@ -63,6 +71,6 @@ API http://localhost:8000/docs · Prometheus http://localhost:9090 · Grafana ht
 - [x] 4. Prometheus metrics
 - [x] 5. Tests (API, mocked Ollama)
 - [x] 6. Docker + Compose
-- [ ] 7. GitHub Actions CI/CD
+- [x] 7. GitHub Actions CI/CD
 - [ ] 8. Load test and optimise (before/after latency)
 - [ ] 9. Grafana dashboard + docs

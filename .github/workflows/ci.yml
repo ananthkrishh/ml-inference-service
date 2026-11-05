@@ -1,20 +1,172 @@
-# Expanded in step 7 (Docker build + push to GHCR, caching).
+# CI/CD pipeline
+#
+#   lint-and-test ──► docker: train model ─► build image ─► smoke test it ─► push to GHCR
+#
+# - Pull requests run everything except the push (nothing is published from a PR).
+# - Pushes to main publish ghcr.io/<owner>/ml-inference-service:{latest, sha-<short>}
+#   for linux/amd64 and linux/arm64 (Apple Silicon).
+# - Caches: pip downloads (setup-python), the dataset (actions/cache) and Docker layers
+#   (BuildKit "gha" cache), so repeat runs skip work that hasn't changed.
+
 name: CI
 
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch: # "Run workflow" button in the Actions tab
+
+# A newer push to the same branch cancels the older, now-pointless run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege by default; the docker job asks for package write access on its own.
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.13" # same as the Docker image and local training
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
 
 jobs:
   lint-and-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # pinned: "ubuntu-latest" moves to a new OS without warning
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-      - run: pip install -r requirements-dev.txt
-      - run: ruff check . && ruff format --check .
-      - run: pytest
+          cache-dependency-path: requirements*.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: ruff check . && ruff format --check .
+
+      - name: Test (pytest, Ollama mocked, synthetic data)
+        run: pytest
+
+  docker:
+    needs: lint-and-test # only build images from code that passed the checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write # push to GHCR with the built-in GITHUB_TOKEN (no secrets to manage)
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Install dependencies (training + the smoke test's sample payload)
+        run: pip install -r requirements-dev.txt
+
+      # The model file is gitignored, so CI trains it. The dataset is cached so we
+      # don't download it on every run.
+      - name: Cache dataset
+        uses: actions/cache@v6
+        with:
+          path: data/raw
+          key: telco-churn-dataset-v1
+
+      - name: Train model
+        run: python -m training.train
+
+      - uses: docker/setup-qemu-action@v4 # lets an x86 runner build arm64 images
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Image tags and labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # 1) Build for this runner's platform and load it into the local Docker...
+      - name: Build image (amd64, for smoke test)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: ml-inference-service:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # 2) ...and prove it actually works before publishing anything.
+      - name: Smoke test the image
+        run: |
+          docker run -d --name api -p 8000:8000 ml-inference-service:ci
+          for _ in $(seq 1 30); do
+            status=$(docker inspect -f '{{.State.Health.Status}}' api)
+            echo "health: $status"
+            [ "$status" = healthy ] && break
+            sleep 2
+          done
+          [ "$status" = healthy ] || { docker logs api; exit 1; }
+
+          curl -sf localhost:8000/health | tee /dev/stderr | grep -q '"model_loaded":true'
+
+          python - <<'EOF'
+          import json, urllib.request
+          from tests.conftest import VALID_CUSTOMER
+          req = urllib.request.Request(
+              "http://localhost:8000/predict",
+              data=json.dumps(VALID_CUSTOMER).encode(),
+              headers={"Content-Type": "application/json"},
+          )
+          body = json.load(urllib.request.urlopen(req, timeout=5))
+          print(body)
+          assert 0 <= body["churn_probability"] <= 1, body
+          EOF
+
+          curl -sf localhost:8000/metrics | grep -q http_request_duration_seconds
+          echo "user inside container: $(docker exec api id -un)"
+          [ "$(docker exec api id -u)" != 0 ]  # must not run as root
+
+      - name: Smoke test logs (on failure)
+        if: failure()
+        run: docker logs api || true
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 3) Publish multi-arch. amd64 layers come straight from the cache built above.
+      - name: Build and push (amd64 + arm64)
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        if: github.event_name == 'push'
+        run: |
+          {
+            echo "### Published image"
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+            echo "Run it: \`docker run -p 8000:8000 ${{ env.IMAGE_NAME }}:latest\`"
+          } >> "$GITHUB_STEP_SUMMARY"
