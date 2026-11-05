@@ -1,13 +1,21 @@
+# Only app/ and models/ are copied into the image; keeping everything else out of the
+# build context makes builds faster and avoids leaking local files into the image.
 .git
 .github
+.claude
 .venv
 venv
+.env
 __pycache__
+*.py[cod]
 .pytest_cache
 .ruff_cache
 data
 tests
+training
 loadtest
 grafana
 prometheus
 *.md
+Makefile
+docker-compose.yml

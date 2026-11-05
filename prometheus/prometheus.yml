@@ -1,8 +1,14 @@
+# Prometheus visits each target every 15 s and copies its /metrics into its own database.
 global:
   scrape_interval: 15s
+  evaluation_interval: 15s
 
 scrape_configs:
   - job_name: ml-inference-api
     metrics_path: /metrics
     static_configs:
-      - targets: ["api:8000"]
+      - targets: ["api:8000"] # "api" = the Compose service name (Docker's internal DNS)
+
+  - job_name: prometheus # Prometheus watching itself (handy sanity check)
+    static_configs:
+      - targets: ["localhost:9090"]

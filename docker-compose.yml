@@ -1,31 +1,92 @@
-# Fleshed out in step 6 (healthchecks, resource limits, Grafana).
+# The whole stack on one machine:
+#
+#   make up        api + prometheus + grafana               (no 2 GB LLM download)
+#   make up-llm    the same + ollama, and pulls llama3.2:3b once into a named volume
+#   make down      stop everything (volumes, i.e. model weights and metrics history, are kept)
+#
+#   API          http://localhost:8000/docs
+#   Prometheus   http://localhost:9090
+#   Grafana      http://localhost:3000   (anonymous viewer; admin login admin / admin)
+#
+# Image tags are pinned so the stack doesn't change under you when a new "latest" ships.
+
+name: ml-inference
+
 services:
   api:
     build: .
+    image: ml-inference-service:local
     ports:
-      - "8000:8000"
+      - "${API_PORT:-8000}:8000" # API_PORT=8080 make up  if 8000 is busy (e.g. `make run`)
     environment:
-      MODEL_PATH: models/churn_model.joblib
-      OLLAMA_BASE_URL: http://ollama:11434
-      OLLAMA_MODEL: llama3.2:3b
-    depends_on:
-      - ollama
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
+      OLLAMA_KEEP_ALIVE: 10m
+      LLM_MAX_TOKENS: 256
+    # No depends_on on ollama: the API works without it (/generate -> 503, /health "degraded"),
+    # so the ML endpoint isn't held hostage by the LLM.
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1g
 
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.40.14
+    profiles: ["llm"]
     ports:
       - "11434:11434"
     volumes:
-      - ollama-models:/root/.ollama   # model weights survive container restarts
+      - ollama-models:/root/.ollama # model weights survive container restarts and rebuilds
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # One-shot helper: downloads the model into the ollama volume, then exits.
+  # Fast no-op on later runs because the weights are already in the volume.
+  ollama-pull:
+    image: ollama/ollama:0.40.14
+    profiles: ["llm"]
+    environment:
+      OLLAMA_HOST: ollama:11434
+    entrypoint: ["ollama", "pull", "${OLLAMA_MODEL:-llama3.2:3b}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.15.1
     ports:
       - "9090:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
     depends_on:
-      - api
+      api:
+        condition: service_healthy # start scraping once the API answers /health
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:13.2.5
+    ports:
+      - "3000:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true" # local demo only: view dashboards without logging in
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro # Prometheus datasource (+ step 9 dashboard)
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
 
 volumes:
   ollama-models:
+  prometheus-data:
+  grafana-data:

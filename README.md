@@ -25,6 +25,16 @@ make test
 make run            # http://localhost:8000/docs
 ```
 
+Or the whole stack in Docker (API, Prometheus, Grafana):
+
+```bash
+make up             # trains the model first if needed, then docker compose up --build
+make up-llm         # same + Ollama, pulls llama3.2:3b (~2 GB) once
+make down
+```
+
+API http://localhost:8000/docs · Prometheus http://localhost:9090 · Grafana http://localhost:3000
+
 ## Model (step 1)
 
 - **Data:** IBM Telco Customer Churn — 7,043 customers, 19 features, ~27% churn.
@@ -52,7 +62,7 @@ make run            # http://localhost:8000/docs
 - [x] 3. Ollama `/generate`
 - [x] 4. Prometheus metrics
 - [x] 5. Tests (API, mocked Ollama)
-- [ ] 6. Docker + Compose
+- [x] 6. Docker + Compose
 - [ ] 7. GitHub Actions CI/CD
 - [ ] 8. Load test and optimise (before/after latency)
 - [ ] 9. Grafana dashboard + docs

@@ -1,0 +1,13 @@
+# Grafana reads this at startup: it creates the "Prometheus" data source automatically,
+# so there's nothing to click through in the UI.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy # Grafana's server talks to Prometheus (inside the Docker network)
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 15s # matches the scrape interval
