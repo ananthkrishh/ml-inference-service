@@ -31,25 +31,10 @@ GitHub Actions · GHCR · Prometheus · Grafana · Locust
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    client["Client<br/>(curl · Locust · /docs)"] --> api
+![Architecture: client to FastAPI in Docker Compose, which calls the sklearn pipeline in-process and Ollama over HTTP; Prometheus scrapes /metrics and Grafana reads Prometheus; GitHub Actions builds, smoke-tests and pushes the image to GHCR](docs/images/architecture.png)
 
-    subgraph compose["Docker Compose"]
-        api["FastAPI + Uvicorn<br/>2 workers, non-root"]
-        model[("sklearn pipeline<br/>joblib, loaded once")]
-        ollama["Ollama<br/>Llama 3.2 3B<br/>(profile: llm)"]
-        prom["Prometheus<br/>scrape every 15 s"]
-        graf["Grafana<br/>dashboard as code"]
-
-        api -- "POST /predict<br/>(in-process)" --> model
-        api -- "POST /generate<br/>shared httpx client" --> ollama
-        prom -- "GET /metrics" --> api
-        graf --> prom
-    end
-
-    gha["GitHub Actions"] -- "build · smoke test · push" --> ghcr[("GHCR image")]
-```
+<sub>Diagram source: [`docs/architecture.mmd`](docs/architecture.mmd) (Mermaid), rendered with
+`mermaid-cli`.</sub>
 
 | Endpoint | What it does |
 |---|---|
