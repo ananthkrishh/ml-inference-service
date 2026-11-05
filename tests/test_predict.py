@@ -56,7 +56,9 @@ def test_health_reports_model(client):
 
 def test_health_without_model(client_without_model):
     body = client_without_model.get("/health").json()
-    assert body == {"status": "ok", "model_loaded": False, "model_version": None}
+    assert body["model_loaded"] is False
+    assert body["model_version"] is None
+    assert body["status"] == "degraded"
 
 
 def test_openapi_shows_schema_from_metadata(client):

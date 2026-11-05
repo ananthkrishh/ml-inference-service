@@ -59,9 +59,36 @@ class PredictionResponse(BaseModel):
     model_version: str
 
 
+class GenerateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    prompt: str = Field(
+        min_length=1, max_length=4000, examples=["Explain customer churn in 2 lines."]
+    )
+    max_tokens: int | None = Field(
+        default=None, ge=1, le=2048, description="Answer length cap; the server cap still applies"
+    )
+    temperature: float | None = Field(
+        default=None, ge=0, le=2, description="0 = predictable, higher = more creative"
+    )
+
+
+class GenerateResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    text: str
+    model: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_seconds: float = Field(description="Time inside Ollama, including model load")
+    load_seconds: float = Field(description="Model load time; ~0 when the model is warm")
+    tokens_per_second: float
+
+
 class HealthResponse(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
 
-    status: str
+    status: str = Field(description='"ok" when everything works, "degraded" if a part is down')
     model_loaded: bool
     model_version: str | None = None
+    ollama_reachable: bool

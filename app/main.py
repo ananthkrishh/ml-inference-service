@@ -6,6 +6,7 @@ Run locally with:  uvicorn app.main:app --reload
 import logging
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
@@ -13,6 +14,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.config import get_settings
 from app.model import load_model
+from app.ollama_client import OllamaClient
 from app.routes import generate, health, predict
 
 log = logging.getLogger(__name__)
@@ -31,9 +33,22 @@ async def lifespan(app: FastAPI):
         app.state.model = None
     app.openapi_schema = None  # rebuild /docs with the loaded model's schema
 
-    # TODO (step 3): create one shared httpx.AsyncClient for Ollama here.
+    # ONE shared HTTP client for Ollama: reuses TCP connections across requests.
+    # connect=5s fails fast if Ollama is down; the overall timeout covers slow generations.
+    http = httpx.AsyncClient(
+        base_url=settings.ollama_base_url,
+        timeout=httpx.Timeout(settings.ollama_timeout_s, connect=5.0),
+    )
+    app.state.ollama = OllamaClient(
+        http,
+        model=settings.ollama_model,
+        keep_alive=settings.ollama_keep_alive,
+        max_tokens=settings.llm_max_tokens,
+    )
+
     yield
-    # TODO (step 3): close the httpx client on shutdown.
+
+    await http.aclose()  # close connections cleanly on shutdown
 
 
 # docs_url=None: we serve our own /docs below (same Swagger UI, plus one style tweak).

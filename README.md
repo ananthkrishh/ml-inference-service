@@ -49,9 +49,9 @@ make run            # http://localhost:8000/docs
 
 - [x] 1. Train and version the model
 - [x] 2. FastAPI `/predict`
-- [ ] 3. Ollama `/generate`
+- [x] 3. Ollama `/generate`
 - [ ] 4. Prometheus metrics
-- [ ] 5. Tests (API, mocked Ollama)
+- [x] 5. Tests (API, mocked Ollama)
 - [ ] 6. Docker + Compose
 - [ ] 7. GitHub Actions CI/CD
 - [ ] 8. Load test and optimise (before/after latency)

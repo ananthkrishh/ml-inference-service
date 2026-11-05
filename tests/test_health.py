@@ -7,7 +7,9 @@ def test_health_ok():
     with TestClient(app) as client:
         r = client.get("/health")
     assert r.status_code == 200
-    assert r.json()["status"] == "ok"
+    # "ok" or "degraded" depending on whether a model/Ollama exist on this machine;
+    # either way the API itself is alive, so it's 200.
+    assert r.json()["status"] in {"ok", "degraded"}
 
 
 def test_root_redirects_to_docs():

@@ -60,6 +60,10 @@ def raw_churn_df() -> pd.DataFrame:
 
 # ---------------------------------------------------------------- API fixtures
 
+# Fake Ollama address for tests. Port 9 refuses connections instantly, so a test that
+# forgets to mock Ollama fails fast; tests that need Ollama mock this URL with respx.
+OLLAMA_URL = "http://127.0.0.1:9"
+
 VALID_CUSTOMER = {
     "tenure": 5,
     "MonthlyCharges": 89.5,
@@ -106,6 +110,8 @@ def _client_with_model_path(monkeypatch, path):
     from app.main import app
 
     monkeypatch.setenv("MODEL_PATH", str(path))
+    monkeypatch.setenv("OLLAMA_BASE_URL", OLLAMA_URL)
+    monkeypatch.setenv("LLM_MAX_TOKENS", "256")
     get_settings.cache_clear()  # settings are cached; re-read the env var
     with TestClient(app) as client:  # `with` runs the lifespan (loads the model)
         yield client
