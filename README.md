@@ -61,7 +61,31 @@ docker run -p 8000:8000 ghcr.io/ananthkrishh/ml-inference-service:latest
 | Recall | 0.783 |
 | Precision | 0.503 |
 | F1 | 0.613 |
-| Single-row predict p95 | ~13 ms |
+| Single-row predict p95 (model only) | 1.1 ms (was 2.9 ms before step 8) |
+
+## Performance (step 8)
+
+Load-tested with Locust against the Docker image (2 CPU limit), on an Apple M4 Pro.
+
+| Change | Load | Throughput | p50 | p95 | p99 |
+|---|---|---|---|---|---|
+| Baseline | 20 users | 181 req/s | 7 ms | 23 ms | 34 ms |
+| + numpy array input instead of a 1-row DataFrame | 20 users | 188 req/s | 4 ms | 12 ms | 17 ms |
+| + 2 uvicorn workers (Prometheus multiprocess mode) | 20 users | 191 req/s | 3 ms | **7 ms** | 10 ms |
+| Baseline image | 100 users | 318 req/s | 210 ms | 280 ms | 310 ms |
+| Final image | 100 users | **929 req/s** | 5 ms | **17 ms** | 29 ms |
+
+How the bottleneck was found: profiling showed 81% of a prediction was preprocessing a one-row
+pandas DataFrame (the classifier itself was 1.4%); selecting columns by position and passing a
+numpy array made predictions 2.5x faster with identical outputs. Under concurrent load,
+Python's GIL serialises CPU work inside one process, so a second worker process cut tail
+latency further. Ruled out by measurement: Docker overhead (<1 ms), BLAS/OpenMP thread
+counts, CPU throttling.
+
+```bash
+pip install -r requirements-loadtest.txt
+make loadtest HOST=http://localhost:8000 NAME=my-run   # 20 users, 60 s, headless
+```
 
 ## Roadmap
 
@@ -72,5 +96,5 @@ docker run -p 8000:8000 ghcr.io/ananthkrishh/ml-inference-service:latest
 - [x] 5. Tests (API, mocked Ollama)
 - [x] 6. Docker + Compose
 - [x] 7. GitHub Actions CI/CD
-- [ ] 8. Load test and optimise (before/after latency)
+- [x] 8. Load test and optimise (before/after latency)
 - [ ] 9. Grafana dashboard + docs

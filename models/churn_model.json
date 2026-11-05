@@ -1,8 +1,8 @@
 {
   "model_name": "churn_classifier",
-  "model_version": "20261105175346-16320c9",
+  "model_version": "20261105210904-16320c9",
   "algorithm": "logistic_regression",
-  "trained_at": "2026-11-05T17:53:46.420725+00:00",
+  "trained_at": "2026-11-05T21:09:04.532479+00:00",
   "sklearn_version": "1.9.1",
   "data_sha256": "16320c9c1ec72448db59aa0a26a0b95401046bef5d02fd3aeb906448e3055e91",
   "n_train": 5634,
@@ -29,6 +29,7 @@
     "PaperlessBilling",
     "PaymentMethod"
   ],
+  "input_format": "array",
   "numeric_features": [
     "tenure",
     "MonthlyCharges",
@@ -142,8 +143,8 @@
     "accuracy": 0.7374
   },
   "single_row_latency": {
-    "p50_ms": 2.196,
-    "p95_ms": 2.592,
-    "p99_ms": 2.73
+    "p50_ms": 1.012,
+    "p95_ms": 1.149,
+    "p99_ms": 1.215
   }
 }

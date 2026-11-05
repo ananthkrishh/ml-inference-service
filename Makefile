@@ -1,4 +1,4 @@
-.PHONY: install train run test lint fmt up up-llm down logs
+.PHONY: install train run test lint fmt up up-llm down logs loadtest
 
 MODEL := models/churn_model.joblib
 
@@ -35,3 +35,12 @@ down:
 
 logs:
 	docker compose logs -f api
+
+# Headless Locust run: make loadtest HOST=http://localhost:8080 NAME=after-fix USERS=20
+HOST ?= http://localhost:8000
+NAME ?= run
+USERS ?= 20
+loadtest:
+	locust -f loadtest/locustfile.py --host $(HOST) --headless -u $(USERS) -r $(USERS) \
+		-t 60s --only-summary --csv loadtest/results/$(NAME)
+	python loadtest/summary.py loadtest/results/$(NAME)

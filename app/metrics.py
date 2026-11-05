@@ -9,16 +9,27 @@ Metrics (all scraped from GET /metrics):
   llm_tokens_total                counter    {kind}                   prompt / completion tokens
   inference_errors_total          counter    {model, reason}          failed inferences by cause
 
-Note for later (step 8): with several uvicorn workers each process has its own counters;
-that needs prometheus_client's multiprocess mode (PROMETHEUS_MULTIPROC_DIR).
+Several uvicorn workers (step 8): each worker is a separate process with its own
+counters. When PROMETHEUS_MULTIPROC_DIR is set (the Docker image does this), every worker
+writes its numbers to files in that directory and /metrics adds them all up. Without it
+(local dev, tests) the normal single-process registry is used.
 """
 
 from __future__ import annotations
 
+import os
 import time
 
 from fastapi import Response
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    CollectorRegistry,
+    Counter,
+    Gauge,
+    Histogram,
+    generate_latest,
+    multiprocess,
+)
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 # Buckets span ~1 ms (/predict) up to 60 s (a long LLM answer), so both fit on one chart.
@@ -32,7 +43,12 @@ REQUEST_LATENCY = Histogram(
     ["method", "route", "status"],
     buckets=LATENCY_BUCKETS,
 )
-IN_FLIGHT = Gauge("http_requests_in_flight", "HTTP requests currently being handled")
+# livesum: in multiprocess mode, add up the gauge across the workers that are alive.
+IN_FLIGHT = Gauge(
+    "http_requests_in_flight",
+    "HTTP requests currently being handled",
+    multiprocess_mode="livesum",
+)
 MODEL_INFERENCE = Histogram(
     "model_inference_seconds",
     "Time spent inside the model call only (no HTTP, no validation)",
@@ -99,5 +115,9 @@ def _route_template(scope: Scope) -> str:
 
 
 def metrics_endpoint() -> Response:
-    """GET /metrics: all metrics in Prometheus' plain-text format."""
+    """GET /metrics: all metrics in Prometheus' plain-text format, summed over workers."""
+    if os.environ.get("PROMETHEUS_MULTIPROC_DIR"):
+        registry = CollectorRegistry()
+        multiprocess.MultiProcessCollector(registry)  # reads every worker's files
+        return Response(generate_latest(registry), media_type=CONTENT_TYPE_LATEST)
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

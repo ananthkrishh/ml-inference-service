@@ -70,3 +70,47 @@ def test_openapi_shows_schema_from_metadata(client):
         "Two year",
     }
     assert "TotalCharges" not in features["required"]
+
+
+def test_array_input_matches_dataframe_pipeline(raw_churn_df, tmp_path, customer):
+    """The fast numpy path must give exactly the same answer as the old DataFrame path."""
+    import pandas as pd
+    from sklearn.base import clone
+
+    from app.model import load_model
+    from training.train import (
+        CATEGORICAL_FEATURES,
+        NUMERIC_FEATURES,
+        build_pipeline,
+        candidate_models,
+        clean,
+        train_and_save,
+    )
+
+    path = tmp_path / "m.joblib"
+    train_and_save(raw_churn_df, path, folds=3, compare=False)
+    fast = load_model(path)
+
+    # Same estimator, but selecting columns by NAME and fed a DataFrame (the old way).
+    X, y = clean(raw_churn_df)
+    slow = build_pipeline(clone(candidate_models(42)["logistic_regression"]))
+    slow.set_params(
+        preprocess__transformers=[
+            ("num", slow.named_steps["preprocess"].transformers[0][1], NUMERIC_FEATURES),
+            ("cat", slow.named_steps["preprocess"].transformers[1][1], CATEGORICAL_FEATURES),
+        ]
+    )
+    # Fit on exactly the rows train_and_save used for training.
+    from sklearn.model_selection import train_test_split
+
+    X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
+    slow.fit(X_train, y_train)
+
+    for total in (447.5, None):  # None = missing TotalCharges, filled by the imputer
+        customer["TotalCharges"] = total
+        features = fast.features_model.model_validate(customer)
+        row = pd.DataFrame([features.model_dump()], columns=fast.metadata["feature_columns"])
+        row[NUMERIC_FEATURES] = row[NUMERIC_FEATURES].astype(float)
+        assert fast.predict_proba_one(features) == pytest.approx(
+            float(slow.predict_proba(row)[0, 1]), abs=1e-12
+        )

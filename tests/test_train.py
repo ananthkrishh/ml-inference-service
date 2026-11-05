@@ -1,10 +1,9 @@
 import json
 
 import joblib
-import pandas as pd
 import sklearn
 
-from training.train import FEATURE_COLUMNS, clean, train_and_save
+from training.train import FEATURE_COLUMNS, clean, to_model_input, train_and_save
 
 
 def test_clean_handles_blank_total_charges(raw_churn_df):
@@ -31,7 +30,8 @@ def test_train_and_save_roundtrip(raw_churn_df, tmp_path):
 
     bundle = joblib.load(out)
     X, _ = clean(raw_churn_df)
-    proba = bundle["pipeline"].predict_proba(X.head(5))
+    assert meta["input_format"] == "array"
+    proba = bundle["pipeline"].predict_proba(to_model_input(X.head(5)))
     assert proba.shape == (5, 2)
 
 
@@ -44,5 +44,5 @@ def test_unseen_category_and_missing_numeric_do_not_crash(raw_churn_df, tmp_path
     row = X.head(1).copy()
     row["PaymentMethod"] = "Crypto"  # never seen in training
     row["TotalCharges"] = float("nan")
-    proba = pipeline.predict_proba(pd.DataFrame(row))
+    proba = pipeline.predict_proba(to_model_input(row))
     assert 0.0 <= proba[0, 1] <= 1.0

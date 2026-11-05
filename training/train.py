@@ -77,6 +77,14 @@ CATEGORICAL_FEATURES = [
 ]
 FEATURE_COLUMNS = NUMERIC_FEATURES + CATEGORICAL_FEATURES
 
+# The pipeline selects columns by POSITION in FEATURE_COLUMNS and is fed a plain numpy
+# object array, not a pandas DataFrame. Same preprocessing, same predictions, but a
+# one-row prediction is ~2.5x faster (step 8): pandas/ColumnTransformer name handling
+# was most of the per-request cost. Recorded in metadata["input_format"].
+INPUT_FORMAT = "array"
+NUMERIC_IDX = [FEATURE_COLUMNS.index(c) for c in NUMERIC_FEATURES]
+CATEGORICAL_IDX = [FEATURE_COLUMNS.index(c) for c in CATEGORICAL_FEATURES]
+
 
 # --------------------------------------------------------------------------- data
 
@@ -108,6 +116,15 @@ def clean(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
     return X, y
 
 
+def to_model_input(X: pd.DataFrame) -> np.ndarray:
+    """Raw feature values as an object array, columns in FEATURE_COLUMNS order.
+
+    This is NOT preprocessing (no values change); it is the container the pipeline
+    expects. The API builds exactly the same shape from a validated request.
+    """
+    return X[FEATURE_COLUMNS].to_numpy(dtype=object)
+
+
 def file_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -127,8 +144,8 @@ def build_preprocessor() -> ColumnTransformer:
     categorical = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
     return ColumnTransformer(
         [
-            ("num", numeric, NUMERIC_FEATURES),
-            ("cat", categorical, CATEGORICAL_FEATURES),
+            ("num", numeric, NUMERIC_IDX),
+            ("cat", categorical, CATEGORICAL_IDX),
         ]
     )
 
@@ -155,7 +172,7 @@ def build_pipeline(estimator) -> Pipeline:
 
 
 def select_model(
-    X: pd.DataFrame, y: pd.Series, seed: int, folds: int, names: list[str]
+    X: np.ndarray, y: pd.Series, seed: int, folds: int, names: list[str]
 ) -> tuple[str, dict[str, float]]:
     """Pick the candidate with the best mean cross-validated ROC-AUC."""
     cv = StratifiedKFold(n_splits=folds, shuffle=True, random_state=seed)
@@ -169,7 +186,7 @@ def select_model(
     return best, scores
 
 
-def evaluate(pipeline: Pipeline, X: pd.DataFrame, y: pd.Series) -> dict[str, float]:
+def evaluate(pipeline: Pipeline, X: np.ndarray, y: pd.Series) -> dict[str, float]:
     proba = pipeline.predict_proba(X)[:, 1]
     pred = (proba >= 0.5).astype(int)
     return {
@@ -181,12 +198,12 @@ def evaluate(pipeline: Pipeline, X: pd.DataFrame, y: pd.Series) -> dict[str, flo
     }
 
 
-def benchmark_single_row(pipeline: Pipeline, X: pd.DataFrame, n: int = 300) -> dict[str, float]:
+def benchmark_single_row(pipeline: Pipeline, X: np.ndarray, n: int = 300) -> dict[str, float]:
     """Latency of one-row predictions — the shape the API will actually see.
 
     Gives you a baseline to compare against the HTTP latency in step 4.
     """
-    rows = [X.iloc[[i % len(X)]] for i in range(n)]
+    rows = [X[i % len(X) : i % len(X) + 1] for i in range(n)]
     pipeline.predict_proba(rows[0])  # warm-up
     timings = []
     for row in rows:
@@ -218,7 +235,8 @@ def train_and_save(
     compare: bool = True,
     data_sha256: str | None = None,
 ) -> dict:
-    X, y = clean(df)
+    X_df, y = clean(df)
+    X = to_model_input(X_df)
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=test_size, stratify=y, random_state=seed
     )
@@ -249,9 +267,10 @@ def train_and_save(
         "n_test": len(X_test),
         "positive_rate": round(float(y.mean()), 4),
         "feature_columns": FEATURE_COLUMNS,
+        "input_format": INPUT_FORMAT,
         "numeric_features": NUMERIC_FEATURES,
         "categorical_features": CATEGORICAL_FEATURES,
-        "category_values": category_values(X),
+        "category_values": category_values(X_df),
         "decision_threshold": 0.5,
         "cv_roc_auc": cv_scores,
         "test_metrics": test_metrics,

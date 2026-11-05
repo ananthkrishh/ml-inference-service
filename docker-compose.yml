@@ -23,6 +23,7 @@ services:
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
       OLLAMA_KEEP_ALIVE: 10m
       LLM_MAX_TOKENS: 256
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2} # worker processes; matches the 2-CPU limit below
     # No depends_on on ollama: the API works without it (/generate -> 503, /health "degraded"),
     # so the ML endpoint isn't held hostage by the LLM.
     restart: unless-stopped

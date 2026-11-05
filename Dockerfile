@@ -30,7 +30,9 @@ FROM ${PYTHON_IMAGE} AS runtime
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    MODEL_PATH=models/churn_model.joblib
+    MODEL_PATH=models/churn_model.joblib \
+    WEB_CONCURRENCY=2 \
+    PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus-metrics
 
 # A dedicated unprivileged user: if someone ever broke into the app, they wouldn't be root.
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin app
@@ -50,4 +52,8 @@ EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# WEB_CONCURRENCY worker processes (step 8: 2 workers cut /predict p95 from 12 to 8 ms
+# under load, because Python's GIL lets one process do only one CPU task at a time).
+# The metrics dir is wiped on start so counters from a previous run don't leak in.
+# `exec` makes uvicorn PID 1, so it receives Docker's stop signal and shuts down cleanly.
+CMD ["sh", "-c", "rm -rf \"$PROMETHEUS_MULTIPROC_DIR\" && mkdir -p \"$PROMETHEUS_MULTIPROC_DIR\" && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers \"$WEB_CONCURRENCY\""]
